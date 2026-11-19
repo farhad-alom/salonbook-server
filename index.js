@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 dotenv.config();
 
@@ -87,11 +87,71 @@ app.get('/', (req, res) => {
     res.send('Hello World!');
 });
 
-app.get('/api/servies', (req, res) => {
+// সব active সার্ভিস দেখানো (search, category, sort সহ)
+app.get('/api/services', async (req, res) => {
+    try {
+        const { search, category, sort } = req.query;
+        const query = { status: "active" };
 
-    res.send();
+        if (typeof search === "string" && search.trim()) {
+            const safeSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            query.serviceName = { $regex: safeSearch, $options: "i" };
+        }
+
+        if (typeof category === "string" && category.trim()) {
+            query.category = category.trim();
+        }
+
+        let sortOption = {};
+        if (typeof sort === "string") {
+            if (sort === "asc") {
+                sortOption = { price: 1 };
+            }
+            if (sort === "desc") {
+                sortOption = { price: -1 };
+            }
+        }
+
+        const result = await serviceCollections.find(query).sort(sortOption).toArray();
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load services" });
+    }
 });
 
+// the latest 6 items services
+app.get('/api/services/featured', async (req, res) => {
+    try {
+        const result = await serviceCollections.find({ status: "active" })
+            .sort({ createdAt: -1 }).limit(6).toArray();
+        res.send(result);
+    }
+    catch (error) {
+        res.status(500).send({ message: "Failed to load featured services" })
+    }
+});
+
+// একটা নির্দিষ্ট সার্ভিস id দিয়ে খোঁজা
+app.get('/api/services/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        // id-এর আকার ঠিক না হলে error
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid service id" });
+        }
+
+        const service = await serviceCollections.findOne({ _id: new ObjectId(id) });
+
+        // ডাটাবেজে না পেলে error
+        if (!service) {
+            return res.status(404).send({ message: "Service not found" });
+        }
+        res.send(service);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load service" });
+    }
+});
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
 });
