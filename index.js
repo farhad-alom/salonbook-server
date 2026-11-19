@@ -152,6 +152,31 @@ app.get('/api/services/:id', async (req, res) => {
         res.status(500).send({ message: "Failed to load service" });
     }
 });
+
+// function সার্ভিসের তথ্য ঠিক আছে কিনা দেখে। ঠিক থাকলে "" ফেরত দেয়, ভুল থাকলে error-এর লেখা ফেরত দেয়
+function checkServiceData(body) {
+    if (!body.serviceName || !body.category || !body.description || !body.image) {
+        return "Please fill in all required fields";
+    }
+    if (!(Number(body.price) > 0)) {
+        return "Price must be a positive number";
+    }
+    if (!(Number(body.duration) > 0)) {
+        return "Duration must be a positive number";
+    }
+    return "";
+}
+
+app.get('/api/admin/services', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const result = await serviceCollections.find({}).sort({ createdAt: -1 }).toArray();
+        res.send(result);
+    }
+    catch (error) {
+        res.status(500).send({ message: "Failed to load services" })
+    }
+})
+
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
 });
