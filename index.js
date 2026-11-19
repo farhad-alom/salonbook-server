@@ -166,7 +166,7 @@ function checkServiceData(body) {
     }
     return "";
 }
-
+// Admin: সব সার্ভিস দেখা (active আর inactive দুটোই)
 app.get('/api/admin/services', verifyJWT, verifyAdmin, async (req, res) => {
     try {
         const result = await serviceCollections.find({}).sort({ createdAt: -1 }).toArray();
@@ -175,7 +175,73 @@ app.get('/api/admin/services', verifyJWT, verifyAdmin, async (req, res) => {
     catch (error) {
         res.status(500).send({ message: "Failed to load services" })
     }
-})
+});
+
+// Admin: নতুন সার্ভিস বানানো
+app.post('/api/admin/services', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const body = req.body;
+        // তথ্য ঠিক না থাকলে error
+        const errorMessage = checkServiceData(body);
+        if (errorMessage) {
+            return res.status(400).send({ message: errorMessage });
+        }
+        const newService = {
+            serviceName: body.serviceName,
+            category: body.category,
+            description: body.description,
+            price: Number(body.price),
+            duration: Number(body.duration),
+            image: body.image,
+            status: body.status === "inactive" ? "inactive" : "active",
+            createdAt: new Date(),
+        };
+        const result = await serviceCollections.insertOne(newService);
+        res.status(201).send(result);
+    }
+    catch (error) {
+        res.status(500).send({ message: "Failed to add service" })
+    }
+});
+
+// Admin: সার্ভিসের তথ্য বদলানো
+app.put('/api/admin/services/:id', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const body = req.body;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid service id" });
+        }
+        const errorMessage = checkServiceData(body);
+        if (errorMessage) {
+            return res.status(400).send({ message: errorMessage });
+        }
+        const result = await serviceCollections.updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    serviceName: body.serviceName,
+                    category: body.category,
+                    description: body.description,
+                    price: Number(body.price),
+                    duration: Number(body.duration),
+                    image: body.image,
+                    status: body.status === "inactive" ? "inactive" : "active",
+                },
+            }
+        );
+        // ওই id-র সার্ভিস না পেলে error
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ message: "Service not found" });
+        }
+
+        res.send({ message: "Service updated successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to update service" });
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
