@@ -88,9 +88,9 @@ app.get('/', (req, res) => {
 });
 
 
-app.get('/api/test', verifyJWT, (req, res) => {
-    res.send({ message: "Token is valid", role: req.user.role });
-})
+// app.get('/api/test', verifyJWT, (req, res) => {
+//     res.send({ message: "Token is valid", role: req.user.role });
+// })
 
 app.get('/api/servies', (req, res) => {
 
@@ -100,11 +100,3 @@ app.get('/api/servies', (req, res) => {
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
 });
-
-
-
-// app.get('/users', async (req, res) => {
-//     const cursor = userCollections.find({});
-//     const result = await cursor.toArray();
-//     res.send(result);
-// });
