@@ -242,6 +242,62 @@ app.put('/api/admin/services/:id', verifyJWT, verifyAdmin, async (req, res) => {
     }
 });
 
+// Admin: সার্ভিস active বা inactive করা
+app.patch('/api/admin/services/:id/status', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const status = req.body.status;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid service id" });
+        }
+
+        if (status !== "active" && status !== "inactive") {
+            return res.status(400).send({ message: "Status must be active or inactive" });
+        }
+
+        const result = await serviceCollections.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: status } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ message: "Service not found" });
+        }
+
+        res.send({ message: "Service status updated" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to update status" });
+    }
+});
+
+// Admin: সার্ভিস মুছে ফেলা
+app.delete('/api/admin/services/:id', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid service id" });
+        }
+
+        const result = await serviceCollections.deleteOne({ _id: new ObjectId(id) });
+
+        // কিছু মোছা না গেলে মানে ওই সার্ভিস ছিল না
+        if (result.deletedCount === 0) {
+            return res.status(404).send({ message: "Service not found" });
+        }
+
+        res.send({ message: "Service deleted successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to delete service" });
+    }
+});
+
+
+
+
+
+
 
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
