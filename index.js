@@ -87,11 +87,6 @@ app.get('/', (req, res) => {
     res.send('Hello World!');
 });
 
-
-// app.get('/api/test', verifyJWT, (req, res) => {
-//     res.send({ message: "Token is valid", role: req.user.role });
-// })
-
 app.get('/api/servies', (req, res) => {
 
     res.send();
