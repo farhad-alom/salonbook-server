@@ -293,8 +293,61 @@ app.delete('/api/admin/services/:id', verifyJWT, verifyAdmin, async (req, res) =
     }
 });
 
+// Customer: নতুন অ্যাপয়েন্টমেন্ট বুকিং
+app.post('/api/appointments', verifyJWT, verifyCustomer, async (req, res) => {
+    try {
+        const { serviceId, date, time, message } = req.body;
 
+        // জরুরি তথ্য না থাকলে error
+        if (!serviceId || !date || !time) {
+            return res.status(400).send({ message: "Service, date and time are required" });
+        }
+        if (!ObjectId.isValid(serviceId)) {
+            return res.status(400).send({ message: "Invalid service id" });
+        }
 
+        // সার্ভিস খোঁজা
+        const service = await serviceCollections.findOne({ _id: new ObjectId(serviceId) });
+        if (!service) {
+            return res.status(404).send({ message: "Service not found" });
+        }
+
+        // inactive সার্ভিসে বুকিং বন্ধ
+        if (service.status !== "active") {
+            return res.status(400).send({ message: "This service is not available now" });
+        }
+
+        // একই তারিখ ও সময়ে আগে থেকে বুকিং আছে কিনা (cancelled বাদে)
+        const alreadyBooked = await appointmentCollections.findOne({
+            date: date,
+            time: time,
+            status: { $ne: "cancelled" },
+        });
+        if (alreadyBooked) {
+            return res.status(409).send({ message: "This time slot is already booked" });
+        }
+
+        // নতুন অ্যাপয়েন্টমেন্ট সেভ
+        const newAppointment = {
+            serviceId: service._id,
+            serviceName: service.serviceName,
+            servicePrice: service.price,
+            customerEmail: req.user.email,
+            customerName: req.user.name,
+            date: date,
+            time: time,
+            message: message || "",
+            status: "pending",
+            paymentStatus: "unpaid",
+            createdAt: new Date(),
+        };
+
+        const result = await appointmentCollections.insertOne(newAppointment);
+        res.status(201).send(result);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to book appointment" });
+    }
+});
 
 
 
