@@ -770,6 +770,29 @@ app.get('/api/admin/transactions', verifyJWT, verifyAdmin, async (req, res) => {
     }
 });
 
+// Customer: শুধু নিজের পেমেন্টের ইতিহাস
+app.get('/api/transactions', verifyJWT, verifyCustomer, async (req, res) => {
+    try {
+        const result = await transactionCollections
+            .find({ customerEmail: req.user.email })
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load payment history" });
+    }
+});
+
+// ভুল ঠিকানায় রিকোয়েস্ট এলে JSON error
+app.use((req, res) => {
+    res.status(404).send({ message: "Route not found" });
+});
+
+// অন্য কোনো অপ্রত্যাশিত error হলে
+app.use((err, req, res, next) => {
+    res.status(err.status || 500).send({ message: "Something went wrong" });
+});
+
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
 });
