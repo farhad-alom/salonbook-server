@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { MongoClient, ObjectId } from "mongodb";
+import Stripe from "stripe";
 
 dotenv.config();
 
@@ -31,6 +32,8 @@ const userCollections = database.collection("users");
 const serviceCollections = database.collection("services");
 const appointmentCollections = database.collection("appointments");
 const transactionCollections = database.collection("transactions");
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 
 async function verifyJWT(req, res, next) {
@@ -636,6 +639,62 @@ app.patch('/api/profile', verifyJWT, async (req, res) => {
         res.status(500).send({ message: "Failed to update profile" });
     }
 });
+
+// Customer: পেমেন্ট শুরু করা (Stripe Checkout লিংক বানানো)
+app.post('/api/payments/checkout', verifyJWT, verifyCustomer, async (req, res) => {
+    try {
+        const appointmentId = req.body.appointmentId;
+
+        if (!ObjectId.isValid(appointmentId)) {
+            return res.status(400).send({ message: "Invalid appointment id" });
+        }
+
+        // শুধু নিজের অ্যাপয়েন্টমেন্ট খোঁজা
+        const appointment = await appointmentCollections.findOne({
+            _id: new ObjectId(appointmentId),
+            customerEmail: req.user.email,
+        });
+
+        if (!appointment) {
+            return res.status(404).send({ message: "Appointment not found" });
+        }
+
+        // confirmed না হলে পেমেন্ট করা যাবে না
+        if (appointment.status !== "confirmed") {
+            return res.status(400).send({ message: "Only confirmed appointments can be paid" });
+        }
+
+        // আগেই paid হলে আবার পেমেন্ট করা যাবে না
+        if (appointment.paymentStatus !== "unpaid") {
+            return res.status(400).send({ message: "This appointment is already paid" });
+        }
+
+        // Stripe-এ পেমেন্টের পেজ বানানো
+        const session = await stripe.checkout.sessions.create({
+            mode: "payment",
+            customer_email: req.user.email,
+            line_items: [
+                {
+                    price_data: {
+                        currency: "usd",
+                        product_data: { name: appointment.serviceName },
+                        unit_amount: Math.round(appointment.servicePrice * 100), // ডলারকে সেন্টে বদলানো
+                    },
+                    quantity: 1,
+                },
+            ],
+            metadata: { appointmentId: appointmentId }, // webhook-এর জন্য রেখে দেওয়া
+            success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+        });
+
+        // পেমেন্ট পেজের লিংক ফেরত দেওয়া
+        res.send({ url: session.url });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to start payment" });
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
