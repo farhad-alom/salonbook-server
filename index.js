@@ -541,6 +541,102 @@ app.patch('/api/admin/appointments/:id/cancel', verifyJWT, verifyAdmin, async (r
     }
 });
 
+
+// Admin: সব customer-এর তালিকা
+app.get('/api/admin/users', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const users = await userCollections.find({ role: "customer" }).sort({ createdAt: -1 }).toArray();
+        res.send(users);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load users" });
+    }
+});
+
+// Admin: একজন customer-এর বিস্তারিত
+app.get('/api/admin/users/:id', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid user id" });
+        }
+
+        const user = await userCollections.findOne({ _id: new ObjectId(id), role: "customer" });
+        if (!user) {
+            return res.status(404).send({ message: "Customer not found" });
+        }
+
+        res.send(user);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load user" });
+    }
+});
+
+// Admin: customer-কে Block বা Unblock করা (body-তে isBlocked: true অথবা false)
+app.patch('/api/admin/users/:id/block-status', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const isBlocked = req.body.isBlocked;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid user id" });
+        }
+
+        if (typeof isBlocked !== "boolean") {
+            return res.status(400).send({ message: "isBlocked must be true or false" });
+        }
+
+        // role: "customer" দেওয়া আছে, তাই admin-কে block করা যাবে না
+        const result = await userCollections.updateOne(
+            { _id: new ObjectId(id), role: "customer" },
+            { $set: { isBlocked: isBlocked } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ message: "Customer not found" });
+        }
+
+        res.send({ message: isBlocked ? "User blocked successfully" : "User unblocked successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to update user" });
+    }
+});
+
+// নিজের প্রোফাইল দেখা (admin ও customer দুজনেই)
+app.get('/api/profile', verifyJWT, async (req, res) => {
+    res.send({
+        name: req.user.name,
+        email: req.user.email,
+        image: req.user.image || "",
+        phone: req.user.phone || "",
+        role: req.user.role,
+    });
+});
+
+// নিজের প্রোফাইল বদলানো (শুধু নাম, ছবি, ফোন)
+app.patch('/api/profile', verifyJWT, async (req, res) => {
+    try {
+        const { name, image, phone } = req.body;
+
+        if (!name) {
+            return res.status(400).send({ message: "Name is required" });
+        }
+
+        // শুধু এই তিনটি জিনিসই বদলানো যাবে। role বা isBlocked এখানে নেই
+        const updateData = { name: name, phone: phone || "" };
+        if (image) {
+            updateData.image = image;
+        }
+
+        // req.user._id মানে লগইন করা নিজের আইডি, তাই অন্যের প্রোফাইল বদলানো যাবে না
+        await userCollections.updateOne({ _id: req.user._id }, { $set: updateData });
+
+        res.send({ message: "Profile updated successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to update profile" });
+    }
+});
+
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
 });
