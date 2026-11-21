@@ -447,6 +447,99 @@ app.patch('/api/appointments/:id/cancel', verifyJWT, verifyCustomer, async (req,
     }
 });
 
+// Admin: সব অ্যাপয়েন্টমেন্ট (customer ও সার্ভিসের তথ্যসহ)
+app.get('/api/admin/appointments', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const list = await appointmentCollections.find().sort({ createdAt: -1 }).toArray();
+
+        // প্রতিটির সার্ভিস থেকে ছবি ও ক্যাটাগরি যোগ করা
+        for (const item of list) {
+            const service = await serviceCollections.findOne({ _id: item.serviceId });
+            item.serviceImage = service ? service.image : "";
+            item.serviceCategory = service ? service.category : "";
+        }
+
+        res.send(list);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load appointments" });
+    }
+});
+
+// Admin: Overview-এর সংখ্যা
+app.get('/api/admin/stats', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const customers = await userCollections.countDocuments({ role: "customer" });
+        const activeServices = await serviceCollections.countDocuments({ status: "active" });
+        const total = await appointmentCollections.countDocuments();
+        const pending = await appointmentCollections.countDocuments({ status: "pending" });
+        const confirmed = await appointmentCollections.countDocuments({ status: "confirmed" });
+        const payments = await appointmentCollections.countDocuments({ paymentStatus: "paid" });
+
+        res.send({ customers, activeServices, total, pending, confirmed, payments });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load stats" });
+    }
+});
+
+// Admin: শুধু pending অ্যাপয়েন্টমেন্ট confirm করা
+app.patch('/api/admin/appointments/:id/confirm', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid appointment id" });
+        }
+
+        const appointment = await appointmentCollections.findOne({ _id: new ObjectId(id) });
+        if (!appointment) {
+            return res.status(404).send({ message: "Appointment not found" });
+        }
+
+        // pending না হলে confirm করা যাবে না
+        if (appointment.status !== "pending") {
+            return res.status(400).send({ message: "Only pending appointments can be confirmed" });
+        }
+
+        await appointmentCollections.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: "confirmed" } }
+        );
+
+        res.send({ message: "Appointment confirmed successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to confirm appointment" });
+    }
+});
+
+// Admin: pending বা confirmed অ্যাপয়েন্টমেন্ট cancel করা
+app.patch('/api/admin/appointments/:id/cancel', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({ message: "Invalid appointment id" });
+        }
+
+        const appointment = await appointmentCollections.findOne({ _id: new ObjectId(id) });
+        if (!appointment) {
+            return res.status(404).send({ message: "Appointment not found" });
+        }
+
+        // আগেই cancelled হলে আবার cancel করা যাবে না
+        if (appointment.status === "cancelled") {
+            return res.status(400).send({ message: "Appointment is already cancelled" });
+        }
+
+        await appointmentCollections.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: "cancelled" } }
+        );
+
+        res.send({ message: "Appointment cancelled successfully" });
+    } catch (error) {
+        res.status(500).send({ message: "Failed to cancel appointment" });
+    }
+});
 
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
