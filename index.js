@@ -11,7 +11,16 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // middleware
-app.use(express.json());
+// /webhook ছাড়া বাকি সব রুটে JSON পড়া (webhook-এ Stripe-এর আসল raw ডাটা লাগে)
+app.use((req, res, next) => {
+    if (req.originalUrl === "/webhook") {
+        next();
+    } else {
+        express.json()(req, res, next);
+    }
+});
+
+
 app.use(cors());
 // ডাটাবেজ কানেকশন 
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -695,6 +704,71 @@ app.post('/api/payments/checkout', verifyJWT, verifyCustomer, async (req, res) =
     }
 });
 
+
+// Stripe: পেমেন্ট সফল হলে Stripe নিজে এই রুটে খবর পাঠায়
+app.post('/webhook', express.raw({ type: "application/json" }), async (req, res) => {
+    // ১. খবরটা সত্যিই Stripe-এর কিনা যাচাই করা
+    let event;
+    try {
+        const signature = req.headers["stripe-signature"];
+        event = stripe.webhooks.constructEvent(req.body, signature, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (error) {
+        return res.status(400).send(`Webhook Error: ${error.message}`);
+    }
+
+    // ২. শুধু পেমেন্ট সম্পন্ন হওয়ার খবর কাজে লাগানো
+    if (event.type === "checkout.session.completed") {
+        try {
+            const session = event.data.object;
+
+            // একই পেমেন্ট দুইবার সেভ হওয়া আটকানো
+            const alreadySaved = await transactionCollections.findOne({ stripeSessionId: session.id });
+
+            if (!alreadySaved && session.payment_status === "paid") {
+                const appointment = await appointmentCollections.findOne({
+                    _id: new ObjectId(session.metadata.appointmentId),
+                });
+                const user = await userCollections.findOne({ email: appointment.customerEmail });
+
+                // অ্যাপয়েন্টমেন্ট paid করা
+                await appointmentCollections.updateOne(
+                    { _id: appointment._id },
+                    { $set: { paymentStatus: "paid" } }
+                );
+
+                // transactions-এ রেকর্ড রাখা
+                await transactionCollections.insertOne({
+                    appointmentId: appointment._id,
+                    customerId: user._id,
+                    customerName: appointment.customerName,
+                    customerEmail: appointment.customerEmail,
+                    serviceName: appointment.serviceName,
+                    appointmentDate: appointment.date,
+                    amount: session.amount_total / 100, // সেন্টকে ডলারে বদলানো
+                    currency: session.currency,
+                    stripeSessionId: session.id,
+                    status: "paid",
+                    createdAt: new Date(),
+                });
+            }
+        } catch (error) {
+            // 500 পাঠালে Stripe পরে আবার চেষ্টা করবে
+            return res.status(500).send({ message: "Failed to save payment" });
+        }
+    }
+
+    res.send({ received: true });
+});
+
+// Admin: সব পেমেন্টের তালিকা (নতুন আগে)
+app.get('/api/admin/transactions', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const result = await transactionCollections.find().sort({ createdAt: -1 }).toArray();
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: "Failed to load transactions" });
+    }
+});
 
 app.listen(port, () => {
     console.log(`The server is running on port: ${port}`);
