@@ -21,7 +21,7 @@ app.use((req, res, next) => {
 });
 
 
-app.use(cors());
+app.use(cors({ origin: [process.env.CLIENT_URL, "http://localhost:3000"] }));
 // ডাটাবেজ কানেকশন 
 const client = new MongoClient(process.env.MONGODB_URI);
 
@@ -94,10 +94,10 @@ function verifyCustomer(req, res, next) {
     next();
 }
 
-
 app.get('/', (req, res) => {
-    res.send('Hello World!');
+    res.send('SalonBook Server Is Running!');
 });
+
 
 // সব active সার্ভিস দেখানো (search, category, sort সহ)
 app.get('/api/services', async (req, res) => {
@@ -793,6 +793,11 @@ app.use((err, req, res, next) => {
     res.status(err.status || 500).send({ message: "Something went wrong" });
 });
 
-app.listen(port, () => {
-    console.log(`The server is running on port: ${port}`);
-});
+// লোকালে চালালে port-এ শুনবে, Vercel-এ Vercel নিজে চালাবে
+if (!process.env.VERCEL) {
+    app.listen(port, () => {
+        console.log(`The server is running on port: ${port}`);
+    });
+}
+
+export default app;
