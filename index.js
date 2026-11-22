@@ -370,10 +370,18 @@ app.get('/api/appointments', verifyJWT, verifyCustomer, async (req, res) => {
             .toArray();
 
         // প্রতিটি অ্যাপয়েন্টমেন্টের সার্ভিস থেকে ছবি এনে যোগ করা
+
+
         for (const item of list) {
-            const service = await serviceCollections.findOne({ _id: item.serviceId });
+            const service = await serviceCollections.findOne({
+                _id: item.serviceId
+            });
+
             item.serviceImage = service ? service.image : "";
+            item.serviceCategory = service ? service.category : "";
         }
+
+
 
         res.send(list);
     } catch (error) {
