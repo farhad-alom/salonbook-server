@@ -345,6 +345,7 @@ app.post('/api/appointments', verifyJWT, verifyCustomer, async (req, res) => {
             serviceName: service.serviceName,
             servicePrice: service.price,
             customerEmail: req.user.email,
+            customerId: req.user._id,
             customerName: req.user.name,
             date: date,
             time: time,
